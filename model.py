@@ -95,9 +95,9 @@ class Model(object):
     start_time = time.time()
     print("Beginning training setup...")
     if self.threads == 1:
-      train_data, train_label = train_input_setup(self)
+      train_data, train_labels, val_data, val_labels = train_input_setup(self)
     else:
-      train_data, train_label = thread_train_setup(self)
+      train_data, train_labels = thread_train_setup(self)
     print("Training setup took {} seconds with {} threads".format(time.time() - start_time, self.threads))
 
     print("Training...")
@@ -110,7 +110,7 @@ class Model(object):
       batch_average = 0
       for idx in range(0, batch_idxs):
         batch_images = train_data[idx * self.batch_size : (idx + 1) * self.batch_size]
-        batch_labels = train_label[idx * self.batch_size : (idx + 1) * self.batch_size]
+        batch_labels = train_labels[idx * self.batch_size : (idx + 1) * self.batch_size]
 
         for exp in range(3):
             if exp==0:
@@ -141,6 +141,10 @@ class Model(object):
         start_average += batch_average
       elif ep >= (self.epoch * 0.8):
         end_average += batch_average
+
+      # Validation
+      val_err = self.sess.run([self.loss], feed_dict={self.images: val_data, self.labels: val_labels, self.batch: len(val_data)})
+      print("Epoch: [{}], time: [{}], val_err: [{}]".format((ep+1), time.time() - start_time, val_err))
 
     # Compare loss of the first 20% and the last 20% epochs
     start_average = float(start_average) / (self.epoch * 0.2)

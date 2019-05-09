@@ -211,7 +211,7 @@ def train_input_setup(config):
 
   # Load data path
   data = prepare_data(sess, dataset=config.data_dir)
-
+  print("DEBUG: Read {} images".format(len(data)))
   sub_input_sequence, sub_label_sequence = [], []
 
   for i in range(len(data)):
@@ -234,10 +234,28 @@ def train_input_setup(config):
         sub_input_sequence.append(sub_input)
         sub_label_sequence.append(sub_label)
 
-  arrdata = np.asarray(sub_input_sequence)
-  arrlabel = np.asarray(sub_label_sequence)
+  # Get length
+  seq_len = len(sub_input_sequence)
+  train_len =  int(seq_len*0.9)
+  # Shuffle indices
+  indices = np.arange(seq_len)
+  np.random.shuffle(indices)
 
-  return (arrdata, arrlabel)
+  print("DEBUG: Data preprocessed. Got {} subimages".format(seq_len))
+
+  # Re order
+  print("DEBUG: Shuffling list")
+  sub_input_sequence = [sub_input_sequence[i] for i in indices]
+  sub_label_sequence = [sub_label_sequence[i] for i in indices]
+
+  # Split
+  data_test, data_val = np.split(sub_input_sequence, [train_len])
+  label_test, label_val = np.split(sub_label_sequence, [train_len])
+
+  # Data for training
+  print("DEBUG: Data for training: {} for train and {} for validation.".format(len(data_test), len(data_val)))
+
+  return (data_test, label_test, data_val, label_val)
 
 def test_input_setup(config):
   sess = config.sess
