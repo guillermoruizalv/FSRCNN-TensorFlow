@@ -198,6 +198,34 @@ def thread_train_setup(config):
 
   return (arrdata, arrlabel)
 
+def train_input_setup_sequence(data, config):
+    """ Split the images in subimages for the training and validation """
+
+    image_size, label_size, stride, scale, padding = config.image_size, config.label_size, config.stride, config.scale, config.padding // 2
+    sub_input_sequence, sub_label_sequence = [], []
+
+    for i in range(len(data)):
+      input_, label_ = preprocess(data[i], scale, distort=config.distort)
+
+      if len(input_.shape) == 3:
+        h, w, _ = input_.shape
+      else:
+        h, w = input_.shape
+
+      for x in range(0, h - image_size + 1, stride):
+        for y in range(0, w - image_size + 1, stride):
+          sub_input = input_[x : x + image_size, y : y + image_size]
+          x_loc, y_loc = x + padding, y + padding
+          sub_label = label_[x_loc * scale : x_loc * scale + label_size, y_loc * scale : y_loc * scale + label_size]
+
+          sub_input = sub_input.reshape([image_size, image_size, 1])
+          sub_label = sub_label.reshape([label_size, label_size, 1])
+
+          sub_input_sequence.append(sub_input)
+          sub_label_sequence.append(sub_label)
+          
+    return (np.asarray(sub_input_sequence), np.asarray(sub_label_sequence))
+
 def train_input_setup(config):
   """
   Read image files, make their sub-images, and save them as a h5 file format.
@@ -206,56 +234,22 @@ def train_input_setup(config):
     import sys
     sys.exit()
 
-  sess = config.sess
-  image_size, label_size, stride, scale, padding = config.image_size, config.label_size, config.stride, config.scale, config.padding // 2
-
   # Load data path
-  data = prepare_data(sess, dataset=config.data_dir)
-  print("DEBUG: Read {} images".format(len(data)))
-  sub_input_sequence, sub_label_sequence = [], []
+  sess = config.sess
+  train_data = prepare_data(sess, dataset=config.data_dir)
+  val_data = prepare_data(sess, dataset=config.val_dir)
 
-  for i in range(len(data)):
-    input_, label_ = preprocess(data[i], scale, distort=config.distort)
-
-    if len(input_.shape) == 3:
-      h, w, _ = input_.shape
-    else:
-      h, w = input_.shape
-
-    for x in range(0, h - image_size + 1, stride):
-      for y in range(0, w - image_size + 1, stride):
-        sub_input = input_[x : x + image_size, y : y + image_size]
-        x_loc, y_loc = x + padding, y + padding
-        sub_label = label_[x_loc * scale : x_loc * scale + label_size, y_loc * scale : y_loc * scale + label_size]
-
-        sub_input = sub_input.reshape([image_size, image_size, 1])
-        sub_label = sub_label.reshape([label_size, label_size, 1])
-        
-        sub_input_sequence.append(sub_input)
-        sub_label_sequence.append(sub_label)
-
-  # Get length
-  seq_len = len(sub_input_sequence)
-  train_len =  int(seq_len*0.9)
-  # Shuffle indices
-  indices = np.arange(seq_len)
-  np.random.shuffle(indices)
-
-  print("DEBUG: Data preprocessed. Got {} subimages".format(seq_len))
-
-  # Re order
-  print("DEBUG: Shuffling list")
-  sub_input_sequence = [sub_input_sequence[i] for i in indices]
-  sub_label_sequence = [sub_label_sequence[i] for i in indices]
+  print("DEBUG: Read {} training images".format(len(train_data)))
+  print("DEBUG: Read {} validation images".format(len(val_data)))
 
   # Split
-  data_test, data_val = np.split(sub_input_sequence, [train_len])
-  label_test, label_val = np.split(sub_label_sequence, [train_len])
+  train_data_sub, train_label_sub = train_input_setup_sequence(train_data, config)
+  print("DEBUG: Train data preprocessed. Got {} subimages, {} labels".format(len(train_data_sub), len(train_label_sub)))
 
-  # Data for training
-  print("DEBUG: Data for training: {} for train and {} for validation.".format(len(data_test), len(data_val)))
+  val_data_sub, val_label_sub = train_input_setup_sequence(val_data, config)
+  print("DEBUG: Validation data preprocessed. Got {} subimages, {} labels".format(len(val_data_sub), len(val_label_sub)))
 
-  return (data_test, label_test, data_val, label_val)
+  return (train_data_sub, train_label_sub, val_data_sub, val_label_sub)
 
 def test_input_setup(config):
   sess = config.sess

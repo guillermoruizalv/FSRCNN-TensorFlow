@@ -45,6 +45,7 @@ class Model(object):
     self.checkpoint_dir = config.checkpoint_dir
     self.output_dir = config.output_dir
     self.data_dir = config.data_dir
+    self.val_dir = config.val_dir
     self.init_model()
 
 
