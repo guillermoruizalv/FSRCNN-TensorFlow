@@ -105,6 +105,10 @@ class Model(object):
     start_time = time.time()
     start_average, end_average, counter = 0, 0, 0
 
+    # Initialize validation errors vector and stop counter
+    val_errors = []
+    stop_counter = 0
+
     for ep in range(self.epoch):
       # Run by batch images
       batch_idxs = len(train_data) // self.batch_size
@@ -144,8 +148,27 @@ class Model(object):
         end_average += batch_average
 
       # Validation
-      val_err = self.sess.run([self.loss], feed_dict={self.images: val_data, self.labels: val_labels, self.batch: len(val_data)})
-      print("Epoch: [{}], time: [{}], val_err: [{}]".format((ep+1), time.time() - start_time, val_err))
+      val_err_lst = self.sess.run([self.loss], feed_dict={self.images: val_data, self.labels: val_labels, self.batch: len(val_data)})
+      val_err = val_err_lst[0]
+      val_errors.append(val_err)
+      print("Epoch: [{}], time: [{}], val_loss: [{}]".format((ep+1), time.time() - start_time, val_err))
+
+      # Check if we need to break
+      ep_back = 10
+      if len(val_errors) > ep_back:
+        ref_err = np.max(val_errors[-(ep_back+1):-1])
+        diff = ref_err - val_err
+        if diff < 5e-5:
+          stop_counter += 1
+        else:
+          stop_counter = 0
+
+        # Print debug info
+        print("DEBUG: ref_err: [{}], diff: [{}], stop_counter: [{}]".format(ref_err, diff, stop_counter))
+
+        # Check stop counter
+        if stop_counter == 5:
+          break
 
     # Compare loss of the first 20% and the last 20% epochs
     start_average = float(start_average) / (self.epoch * 0.2)
