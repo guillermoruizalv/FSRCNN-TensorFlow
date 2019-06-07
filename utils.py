@@ -93,7 +93,7 @@ def prepare_data(sess, dataset):
         data.extend(glob.glob(os.path.join(data_dir, files)))
     shuffle(data)
   else:
-    data_dir = os.path.join(os.sep, (os.path.join(os.getcwd(), dataset)), "Set5")
+    data_dir = os.path.join(os.getcwd(), dataset)
     data = sorted(glob.glob(os.path.join(data_dir, "*.bmp")))
 
   return data
@@ -251,31 +251,32 @@ def train_input_setup(config):
 
   return (train_data_sub, train_label_sub, val_data_sub, val_label_sub)
 
-def test_input_setup(config):
+def test_input_setup(config, data):
   sess = config.sess
 
-  # Load data path
-  data = prepare_data(sess, dataset="Test")
+  arrdata_lst = []
+  arrlabel_lst = []
 
-  input_, label_ = preprocess(data[2], config.scale)
+  for test_img in data:
+      input_, label_ = preprocess(test_img, config.scale)
 
-  if len(input_.shape) == 3:
-    h, w, _ = input_.shape
-  else:
-    h, w = input_.shape
+      if len(input_.shape) == 3:
+        h, w, _ = input_.shape
+      else:
+        h, w = input_.shape
 
-  arrdata = np.pad(input_.reshape([1, h, w, 1]), ((0,0),(2,2),(2,2),(0,0)), 'reflect')
+      arrdata_lst.append(np.pad(input_.reshape([1, h, w, 1]), ((0,0),(2,2),(2,2),(0,0)), 'reflect'))
 
-  if len(label_.shape) == 3:
-    h, w, _ = label_.shape
-  else:
-    h, w = label_.shape
+      if len(label_.shape) == 3:
+        h, w, _ = label_.shape
+      else:
+        h, w = label_.shape
 
-  arrlabel = label_.reshape([1, h, w, 1])
+      arrlabel_lst.append(label_.reshape([1, h, w, 1]))
 
-  return (arrdata, arrlabel)
+  return (arrdata_lst, arrlabel_lst)
 
-def merge(config, Y):
+def merge(config, data_img, Y):
   """
   Merges super-resolved image with chroma components
   """
@@ -283,8 +284,8 @@ def merge(config, Y):
   Y = Y.reshape(h, w, 1) * 255
   Y = Y.round().astype(np.uint8)
 
-  data = prepare_data(config.sess, dataset="Test")
-  src = Image.open(data[2]).convert('YCbCr')
+  src = Image.open(data_img).convert('YCbCr')
+  src = src.crop((0,0,w,h))
   (width, height) = src.size
   if downsample is False:
     src = src.resize((width * config.scale, height * config.scale), Image.BICUBIC)

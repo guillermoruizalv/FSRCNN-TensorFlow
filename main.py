@@ -17,6 +17,7 @@ flags.DEFINE_integer("radius", 1, "Max radius of the deconvolution input tensor 
 flags.DEFINE_string("checkpoint_dir", "checkpoint", "Name of checkpoint directory [checkpoint]")
 flags.DEFINE_string("output_dir", "result", "Name of test output directory [result]")
 flags.DEFINE_string("data_dir", "Train", "Name of data directory to train on [Train]")
+flags.DEFINE_string("test_dir", "Test", "Name of data directory to test [Test]")
 flags.DEFINE_string("val_dir", "Validation", "Name of data directory to use for validation [Validation]")
 flags.DEFINE_boolean("train", True, "True for training, false for testing [True]")
 flags.DEFINE_integer("threads", 1, "Number of processes to pre-process data with [1]")
