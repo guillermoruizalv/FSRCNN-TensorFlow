@@ -193,18 +193,19 @@ class Model(object):
     for orig_path, test_data, test_label in zip(data_images, test_data_lst, test_label_lst):
       print("Testing image {}".format(os.path.basename(orig_path)))
       start_time = time.time()
-      result = np.clip(self.pred.eval({self.images: test_data, self.labels: test_label, self.batch: 1}), 0, 1)
+      #result = np.clip(self.pred.eval({self.images: test_data, self.labels: test_label, self.batch: 1}), 0, 1)
+      result = np.clip(self.pred.eval({self.images: test_label, self.labels: test_label, self.batch: 1}), 0, 1)
       passed = time.time() - start_time
-      img1 = tf.convert_to_tensor(test_label, dtype=tf.float32)
-      img2 = tf.convert_to_tensor(result, dtype=tf.float32)
-      psnr = self.sess.run(tf.image.psnr(img1, img2, 1))
-      ssim = self.sess.run(tf.image.ssim(img1, img2, 1))
-      print("Took %.3f seconds, PSNR: %.6f, SSIM: %.6f" % (passed, psnr, ssim))
+      #img1 = tf.convert_to_tensor(test_label, dtype=tf.float32)
+      #img2 = tf.convert_to_tensor(result, dtype=tf.float32)
+      #psnr = self.sess.run(tf.image.psnr(img1, img2, 1))
+      #ssim = self.sess.run(tf.image.ssim(img1, img2, 1))
+      #print("Took %.3f seconds, PSNR: %.6f, SSIM: %.6f" % (passed, psnr, ssim))
 
       print ("Merging network result with {}".format(orig_path))
       result = merge(self, orig_path, result)
       image_path = os.path.join(os.getcwd(), self.output_dir)
-      image_path = os.path.join(image_path, "{}.png".format(os.path.basename(orig_path)))
+      image_path = os.path.join(image_path, "{}".format(os.path.basename(orig_path)))
 
       array_image_save(result, image_path)
 

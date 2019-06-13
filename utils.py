@@ -284,7 +284,9 @@ def merge(config, data_img, Y):
   Y = Y.reshape(h, w, 1) * 255
   Y = Y.round().astype(np.uint8)
 
-  src = Image.open(data_img).convert('YCbCr')
+  src = Image.open(data_img)
+  src = src.resize((w, h), Image.BICUBIC)
+  src = src..convert('YCbCr')
   src = src.crop((0,0,w,h))
   (width, height) = src.size
   if downsample is False:
