@@ -171,11 +171,9 @@ class Model(object):
       if val_err <= min_mse:
         delta = min_mse - val_err
         min_mse = val_err
-        if delta <= 5e-5:
-          patience_counter += 1
-        else:
-          patience_counter = 0
+        patience_counter = 0
       else:
+        delta = 0
         patience_counter += 1
 
       # Print early stopping info
