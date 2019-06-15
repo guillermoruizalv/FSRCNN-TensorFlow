@@ -253,19 +253,10 @@ def train_input_setup(config):
 
 def test_input_setup(config, data):
   sess = config.sess
-
-  arrdata_lst = []
   arrlabel_lst = []
 
   for test_img in data:
-      input_, label_ = preprocess(test_img, config.scale)
-
-      if len(input_.shape) == 3:
-        h, w, _ = input_.shape
-      else:
-        h, w = input_.shape
-
-      arrdata_lst.append(np.pad(input_.reshape([1, h, w, 1]), ((0,0),(2,2),(2,2),(0,0)), 'reflect'))
+      _, label_ = preprocess(test_img, config.scale)
 
       if len(label_.shape) == 3:
         h, w, _ = label_.shape
@@ -274,7 +265,7 @@ def test_input_setup(config, data):
 
       arrlabel_lst.append(label_.reshape([1, h, w, 1]))
 
-  return (arrdata_lst, arrlabel_lst)
+  return arrlabel_lst
 
 def merge(config, data_img, Y):
   """
@@ -285,8 +276,8 @@ def merge(config, data_img, Y):
   Y = Y.round().astype(np.uint8)
 
   src = Image.open(data_img)
+  src = src.convert('YCbCr')
   src = src.resize((w, h), Image.BICUBIC)
-  src = src..convert('YCbCr')
   src = src.crop((0,0,w,h))
   (width, height) = src.size
   if downsample is False:

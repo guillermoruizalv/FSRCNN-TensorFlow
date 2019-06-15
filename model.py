@@ -9,7 +9,7 @@ from utils import (
 )
 
 import time
-import os
+import os, sys
 import importlib
 from random import randrange
 
@@ -23,6 +23,7 @@ import pdb
 class Model(object):
   
   def __init__(self, sess, config):
+    # Config
     self.sess = sess
     self.arch = config.arch
     self.fast = config.fast
@@ -36,20 +37,20 @@ class Model(object):
     self.distort = config.distort
     self.params = config.params
 
+    # Padding, sub-sizes, size and stride
     self.padding = 4
     # Different image/label sub-sizes for different scaling factors x2, x3, x4
     scale_factors = [[20 + self.padding, 40], [14 + self.padding, 42], [12 + self.padding, 48]]
     self.image_size, self.label_size = scale_factors[self.scale - 2]
-
     self.stride = self.image_size - self.padding
 
+    # Directories
     self.checkpoint_dir = config.checkpoint_dir
     self.output_dir = config.output_dir
     self.data_dir = config.data_dir
     self.test_dir = config.test_dir
     self.val_dir = config.val_dir
     self.init_model()
-
 
   def init_model(self):
     if self.train:
@@ -58,35 +59,43 @@ class Model(object):
     else:
         self.images = tf.placeholder(tf.float32, [None, None, None, 1], name='images')
         self.labels = tf.placeholder(tf.float32, [None, None, None, 1], name='labels')
+
     # Batch size differs in training vs testing
     self.batch = tf.placeholder(tf.int32, shape=[], name='batch')
 
+    # Import selected model
     model = importlib.import_module(self.arch)
     self.model = model.Model(self)
-
     self.pred = self.model.model()
 
+    # Set checkpoint container name
     model_dir = "%s_%s_%s_%s" % (self.model.name.lower(), self.label_size, '-'.join(str(i) for i in self.model.model_params), "r"+str(self.radius))
     self.model_dir = os.path.join(self.checkpoint_dir, model_dir)
 
+    # Initialize loss function
     self.loss = self.model.loss(self.labels, self.pred)
 
+    # Initialize the checkpoint saver
     self.saver = tf.train.Saver()
 
   def run(self):
     global_step = tf.Variable(0, trainable=False)
+
+    # Initialize optimizer
     optimizer = tf.train.AdamOptimizer(self.learning_rate)
     deconv_mult = lambda grads: list(map(lambda x: (x[0] * 1.0, x[1]) if 'deconv' in x[1].name else x, grads))
     grads = deconv_mult(optimizer.compute_gradients(self.loss))
     self.train_op = optimizer.apply_gradients(grads, global_step=global_step)
 
+    # Initialize global variables
     tf.global_variables_initializer().run()
 
     if self.load():
       print(" [*] Load SUCCESS")
     else:
-      print(" [!] Load failed...")
+      print(" [!] Load FAILED")
 
+    # Choose mode [Save params, Train, Test]
     if self.params:
       save_params(self.sess, self.model.model_params)
     elif self.train:
@@ -95,21 +104,25 @@ class Model(object):
       self.run_test()
 
   def run_train(self):
-    start_time = time.time()
+
+    # Training setup
     print("Beginning training setup...")
+    start_time = time.time()
     if self.threads == 1:
       train_data, train_labels, val_data, val_labels = train_input_setup(self)
     else:
       train_data, train_labels = thread_train_setup(self)
     print("Training setup took {} seconds with {} threads".format(time.time() - start_time, self.threads))
 
+    # Training variables initialization
     print("Training...")
     start_time = time.time()
     start_average, end_average, counter = 0, 0, 0
 
     # Initialize validation errors vector and stop counter
-    val_errors = []
-    stop_counter = 0
+    min_mse = sys.float_info.max
+    patience = 16
+    patience_counter = 0
 
     for ep in range(self.epoch):
       # Run by batch images
@@ -143,6 +156,7 @@ class Model(object):
             if counter % 500 == 0:
               self.save(counter)
 
+      # Compute average
       batch_average = float(batch_average) / batch_idxs
       if ep < (self.epoch * 0.2):
         start_average += batch_average
@@ -150,26 +164,25 @@ class Model(object):
         end_average += batch_average
 
       # Validation
-      val_err_lst = self.sess.run([self.loss], feed_dict={self.images: val_data, self.labels: val_labels, self.batch: len(val_data)})
-      val_err = val_err_lst[0]
-      val_errors.append(val_err)
-      print("Epoch: [{}], time: [{}], val_loss: [{}]".format((ep+1), time.time() - start_time, val_err))
+      val_err = self.sess.run([self.loss], feed_dict={self.images: val_data, self.labels: val_labels, self.batch: len(val_data)})[0]
+      print("Epoch: [{}], time: [{}], MSE: [{}]".format((ep+1), time.time() - start_time, val_err))
 
-      # Check if we need to break
-      ep_back = 10
-      if len(val_errors) > ep_back:
-        ref_err = np.max(val_errors[-(ep_back+1):-1])
-        diff = ref_err - val_err
-        if diff < 5e-5:
-          stop_counter += 1
+      # Early stopping
+      if val_err <= min_mse:
+        delta = min_mse - val_err
+        min_mse = val_err
+        if delta <= 5e-5:
+          patience_counter += 1
         else:
-          stop_counter = 0
+          patience_counter = 0
+      else:
+        patience_counter += 1
 
-        # Print debug info
-        print("DEBUG: ref_err: [{}], diff: [{}], stop_counter: [{}]".format(ref_err, diff, stop_counter))
+      # Print early stopping info
+      print("ES: val_err: [{}], min_mse: [{}], delta: [{}], patience_counter: [{}]".format(val_err, min_mse, delta, patience_counter))
 
-        # Check stop counter
-        if stop_counter == 5:
+      # Check stop counter
+      if patience_counter == patience: 
           break
 
     # Compare loss of the first 20% and the last 20% epochs
@@ -178,50 +191,42 @@ class Model(object):
     print("Start Average: [%.6f], End Average: [%.6f], Improved: [%.2f%%]" \
       % (start_average, end_average, 100 - (100*end_average/start_average)))
 
-    # Linux desktop notification when training has been completed
-    # title = "Training complete - FSRCNN"
-    # notification = "{}-{}-{} done training after {} epochs".format(self.image_size, self.label_size, self.stride, self.epoch);
-    # notify_command = 'notify-send "{}" "{}"'.format(title, notification)
-    # os.system(notify_command)
-
-  
   def run_test(self):
-    print("Testing...")
+
+    # Read input images
     data_images = prepare_data(self.sess, dataset=self.test_dir)
-    test_data_lst, test_label_lst = test_input_setup(self, data_images)
+    test_label_lst = test_input_setup(self, data_images)
 
-    for orig_path, test_data, test_label in zip(data_images, test_data_lst, test_label_lst):
-      print("Testing image {}".format(os.path.basename(orig_path)))
+    # Start testing
+    print("Testing...")
+
+    for test_label_path, test_label in zip(data_images, test_label_lst):
+      # Evaluation
+      print("Testing image {}".format(os.path.basename(test_label_path)))
       start_time = time.time()
-      #result = np.clip(self.pred.eval({self.images: test_data, self.labels: test_label, self.batch: 1}), 0, 1)
-      result = np.clip(self.pred.eval({self.images: test_label, self.labels: test_label, self.batch: 1}), 0, 1)
+      result = np.clip(self.pred.eval({self.images: test_label, self.batch: 1}), 0, 1)
       passed = time.time() - start_time
-      #img1 = tf.convert_to_tensor(test_label, dtype=tf.float32)
-      #img2 = tf.convert_to_tensor(result, dtype=tf.float32)
-      #psnr = self.sess.run(tf.image.psnr(img1, img2, 1))
-      #ssim = self.sess.run(tf.image.ssim(img1, img2, 1))
-      #print("Took %.3f seconds, PSNR: %.6f, SSIM: %.6f" % (passed, psnr, ssim))
 
-      print ("Merging network result with {}".format(orig_path))
-      result = merge(self, orig_path, result)
+      # Merge
+      print ("Merging network result with channels from {}".format(test_label_path))
+      result = merge(self, test_label_path, result)
+
+      # Save image
       image_path = os.path.join(os.getcwd(), self.output_dir)
-      image_path = os.path.join(image_path, "{}".format(os.path.basename(orig_path)))
-
+      image_path = os.path.join(image_path, "{}".format(os.path.basename(test_label_path)))
       array_image_save(result, image_path)
 
   def save(self, step):
+    print("[*] Saving checkpoint")
     model_name = self.model.name + ".model"
 
     if not os.path.exists(self.model_dir):
         os.makedirs(self.model_dir)
 
-    self.saver.save(self.sess,
-                    os.path.join(self.model_dir, model_name),
-                    global_step=step)
+    self.saver.save(self.sess, os.path.join(self.model_dir, model_name), global_step=step)
 
   def load(self):
-    print(" [*] Reading checkpoints...")
-
+    print("[*] Reading checkpoint")
     ckpt = tf.train.get_checkpoint_state(self.model_dir)
     if ckpt and ckpt.model_checkpoint_path:
         ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
